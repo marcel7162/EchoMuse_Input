@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/wilbowes/EchoMuse/internal/bindings/mixer"
+	"github.com/wilbowes/EchoMuse/pkg/board"
 )
 
 // A wrong name here is silence rather than an error, and the two ends failed
 // independently: the capture routes leave the ADCs powered down, the playback
 // routes leave the DAC powered down, and either alone is a device that looks
 // healthy in every log it writes.
-func TestRoutesCoverBothEndsOfTheAudioPath(t *testing.T) {
+func TestBiscuitRoutesCoverBothEndsOfTheAudioPath(t *testing.T) {
 	want := map[string]bool{
 		// capture: the DIFFERENTIAL inputs into all four ADCs — the
 		// single-ended "IN2" switches beside them are the wrong ones
@@ -29,15 +30,17 @@ func TestRoutesCoverBothEndsOfTheAudioPath(t *testing.T) {
 		"HPL Output Mixer L_DAC Switch": true,
 	}
 
+	routes := board.CurrentLayout().CodecRoutes
+
 	got := map[string]bool{}
-	for _, w := range Routes {
-		if got[w.Name] {
-			t.Errorf("%s listed twice", w.Name)
+	for _, r := range routes {
+		if got[r.Control] {
+			t.Errorf("%s listed twice", r.Control)
 		}
-		if w.Value != "1" {
-			t.Errorf("%s: value %q, want \"1\" — every route here is a switch to close", w.Name, w.Value)
+		if r.Value != "1" {
+			t.Errorf("%s: value %q, want \"1\" — every route here is a switch to close", r.Control, r.Value)
 		}
-		got[w.Name] = true
+		got[r.Control] = true
 	}
 	for name := range want {
 		if !got[name] {
@@ -98,12 +101,13 @@ func TestEnsureRoutesClosesEveryRoute(t *testing.T) {
 
 	EnsureRoutes()
 
-	if len(b.sets) != len(Routes) {
-		t.Fatalf("%d writes for %d routes", len(b.sets), len(Routes))
+	routes := board.CurrentLayout().CodecRoutes
+	if len(b.sets) != len(routes) {
+		t.Fatalf("%d writes for %d routes", len(b.sets), len(routes))
 	}
-	for i, w := range Routes {
-		if len(b.sets[i]) != 2 || b.sets[i][0] != w.Name || b.sets[i][1] != w.Value {
-			t.Errorf("write %d = %v, want [%s %s]", i, b.sets[i], w.Name, w.Value)
+	for i, r := range routes {
+		if len(b.sets[i]) != 2 || b.sets[i][0] != r.Control || b.sets[i][1] != r.Value {
+			t.Errorf("write %d = %v, want [%s %s]", i, b.sets[i], r.Control, r.Value)
 		}
 	}
 }
@@ -138,19 +142,22 @@ func TestEnsureRoutesRunsOnlyOncePerProcess(t *testing.T) {
 // accepts everything writes all ten, so a count of zero here cannot be an
 // artefact of the fake.
 func TestEnsureRoutesCountsAndReportsFailures(t *testing.T) {
+	routes := board.CurrentLayout().CodecRoutes
+	if len(routes) < 2 {
+		t.Skip("need at least 2 routes to test failure counting")
+	}
+
 	resetOnce()
 	b := &recordingBackend{fail: map[string]bool{}}
-	// Fail exactly two of them, chosen from the table rather than by index so
-	// the test does not depend on the ordering of Routes.
-	b.fail[Routes[0].Name] = true
-	b.fail[Routes[len(Routes)-1].Name] = true
+	b.fail[routes[0].Control] = true
+	b.fail[routes[len(routes)-1].Control] = true
 	mixer.Use(b)
 
 	EnsureRoutes()
 
-	if len(b.sets) != len(Routes)-2 {
+	if len(b.sets) != len(routes)-2 {
 		t.Fatalf("%d writes, want %d — a failing control must not stop the "+
-			"remaining routes being attempted", len(b.sets), len(Routes)-2)
+			"remaining routes being attempted", len(b.sets), len(routes)-2)
 	}
 
 	// The control: nothing fails, everything is written.
@@ -158,8 +165,8 @@ func TestEnsureRoutesCountsAndReportsFailures(t *testing.T) {
 	ok := &recordingBackend{}
 	mixer.Use(ok)
 	EnsureRoutes()
-	if len(ok.sets) != len(Routes) {
+	if len(ok.sets) != len(routes) {
 		t.Fatalf("control: %d writes with nothing failing, want %d",
-			len(ok.sets), len(Routes))
+			len(ok.sets), len(routes))
 	}
 }

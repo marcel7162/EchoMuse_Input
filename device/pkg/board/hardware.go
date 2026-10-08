@@ -16,10 +16,15 @@ import (
 // firmware always has, and tells us. A part with no fallback is not opened by
 // number at all.
 type Hardware struct {
-	// DotKeys carries the action and mute buttons; VolumeKeys the volume
-	// pair. Input device names, as /proc/bus/input/devices gives them.
+	// DotKeys carries the action button and, on biscuit, the mute button
+	// too. VolumeKeys the volume pair. Input device names, as
+	// /proc/bus/input/devices gives them.
 	DotKeys    Input
 	VolumeKeys Input
+	// MuteKeys carries the mute button when it is on a separate input
+	// device from DotKeys. Zero value means mute is on DotKeys (biscuit)
+	// or absent.
+	MuteKeys Input
 	// LEDRing is the ring driver's i2c client, by its sysfs `name`.
 	LEDRing I2C
 	// MuteLEDGPIO is the sysfs GPIO number of the LED under the mute button,
@@ -39,6 +44,44 @@ type Hardware struct {
 	// can exist on a board whose radio is not behind it, so this is stated
 	// per board and never assumed.
 	HCI string
+	// MicArray describes the capture layout: channel count, sample format,
+	// mic geometry and echo reference. A zero value means the capture
+	// pipeline will not start (needs hardware probing).
+	MicArray MicArray
+	// CodecRoutes are the DAPM routes EnsureRoutes must close for audio.
+	CodecRoutes []CodecRoute
+	// AdcMuteCtls are the mixer control names for muting capture channels.
+	AdcMuteCtls []string
+	// AdcVolumeCtls are the mixer control names for ADC digital volume.
+	AdcVolumeCtls []string
+	// AdcMicpgaCtls are the mixer control names for ADC MICPGA volume.
+	AdcMicpgaCtls []string
+}
+
+// MicPosition is one microphone in a perimeter array.
+type MicPosition struct {
+	Ch    int     // ALSA channel number
+	Angle float64 // degrees, clockwise from 12 o'clock
+}
+
+// MicArray describes a board's microphone capture configuration. A zero
+// value (Channels == 0) means the capture pipeline will not start on this
+// board — the layout needs hardware probing first.
+type MicArray struct {
+	Channels    int           // total ALSA channels (mics + any loopback)
+	SampleBytes int           // bytes per sample: 2=S16_LE, 3=S24_3LE, 4=S32_LE
+	SampleRate  int           // Hz
+	PeriodSize  int           // frames per ALSA period
+	PeriodCount int           // periods per ALSA ring buffer
+	Perimeter   []MicPosition // perimeter mics for direction estimation
+	CentreCh    int           // omnidirectional centre mic, -1 when none
+	EchoRefCh   int           // hardware echo reference channel, -1 when none
+}
+
+// CodecRoute is a DAPM switch that must be closed for audio to flow.
+type CodecRoute struct {
+	Control string
+	Value   string
 }
 
 // LightSensor is an ambient light sensor on the i2c bus.
@@ -80,6 +123,62 @@ var biscuitHardware = &Hardware{
 	LightSensor: LightSensor{Driver: "tsl2540", Attr: "als_lux"},
 	// MediaTek's combo-chip (WMT) Bluetooth node.
 	HCI: "/dev/stpbt",
+	MicArray: MicArray{
+		Channels:    9,
+		SampleBytes: 3, // S24_3LE
+		SampleRate:  16000,
+		PeriodSize:  512,
+		PeriodCount: 5,
+		Perimeter: []MicPosition{
+			{0, 330}, {1, 30}, {2, 90}, {3, 150}, {4, 210}, {5, 270},
+		},
+		CentreCh:  6,
+		EchoRefCh: 8,
+	},
+	CodecRoutes: []CodecRoute{
+		{"ADC_D Right Ip Select ADC_D DIF1_R switch", "1"},
+		{"ADC_D Left Ip Select ADC_D DIF1_L switch", "1"},
+		{"ADC_C Right Ip Select ADC_C DIF1_R switch", "1"},
+		{"ADC_C Left Ip Select ADC_C DIF1_L switch", "1"},
+		{"ADC_B Right Ip Select ADC_B DIF1_R switch", "1"},
+		{"ADC_B Left Ip Select ADC_B DIF1_L switch", "1"},
+		{"ADC_A Right Ip Select ADC_A DIF1_R switch", "1"},
+		{"ADC_A Left Ip Select ADC_A DIF1_L switch", "1"},
+		{"HPR Output Mixer R_DAC Switch", "1"},
+		{"HPL Output Mixer L_DAC Switch", "1"},
+	},
+	AdcMuteCtls: []string{
+		"ADC_A Left Mute", "ADC_A Right Mute",
+		"ADC_B Left Mute", "ADC_B Right Mute",
+		"ADC_C Left Mute", "ADC_C Right Mute",
+		"ADC_D Left Mute", "ADC_D Right Mute",
+	},
+	AdcVolumeCtls: []string{
+		"ADC_A Digital Volume Control",
+		"ADC_B Digital Volume Control",
+		"ADC_C Digital Volume Control",
+		"ADC_D Digital Volume Control",
+	},
+	AdcMicpgaCtls: []string{
+		"ADC_A MICPGA Volume Ctrl",
+		"ADC_B MICPGA Volume Ctrl",
+		"ADC_C MICPGA Volume Ctrl",
+		"ADC_D MICPGA Volume Ctrl",
+	},
+}
+
+// cupcakeHardware: names read by marcel7162 off a replacement-eMMC unit on
+// 2026-10-08. No fallback values — new boards do not get any.
+var cupcakeHardware = &Hardware{
+	DotKeys:  Input{Name: "gpio-keys"},
+	MuteKeys: Input{Name: "gpio-privacy"},
+	// No volume buttons on the Echo Input.
+	LEDRing: I2C{Driver: "lp5562"},
+	// No MuteLEDGPIO: mute is handled by the gpio-privacy input driver.
+	Capture:  PCM{Name: "TDM_Capture"},
+	Playback: PCM{Name: "DL1_Playback"},
+	// tsl2572 light sensor uses IIO; not readable by the current als binding.
+	HCI: "/dev/stpbt",
 }
 
 // Layout is a board's Hardware resolved on the running device: what the
@@ -92,6 +191,7 @@ type Layout struct {
 
 	DotKeys    string // /dev/input/eventN, "" when not found
 	VolumeKeys string
+	MuteKeys   string // separate mute device, "" when mute is on DotKeys
 	LEDRing    string // sysfs directory, "" when not found
 	// MuteLEDGPIO is "" when the board has no mute LED GPIO to drive.
 	MuteLEDGPIO string
@@ -103,6 +203,14 @@ type Layout struct {
 	// switched on.
 	LightSensor LightSensor
 	HCI         string
+
+	// MicArray, CodecRoutes and the ADC control lists are static board
+	// properties, copied from Hardware so consumers read one struct.
+	MicArray      MicArray
+	CodecRoutes   []CodecRoute
+	AdcMuteCtls   []string
+	AdcVolumeCtls []string
+	AdcMicpgaCtls []string
 
 	// Notes has one line per part saying how it was found, for the log.
 	Notes []string
@@ -118,7 +226,11 @@ func Resolve(root string, b *Board) *Layout {
 	if b != nil && b.Hardware != nil {
 		hw = b.Hardware
 	}
-	l := &Layout{Board: b, MuteLEDGPIO: hw.MuteLEDGPIO, LightSensor: hw.LightSensor, HCI: hw.HCI}
+	l := &Layout{
+		Board: b, MuteLEDGPIO: hw.MuteLEDGPIO, LightSensor: hw.LightSensor, HCI: hw.HCI,
+		MicArray: hw.MicArray, CodecRoutes: hw.CodecRoutes, AdcMuteCtls: hw.AdcMuteCtls,
+		AdcVolumeCtls: hw.AdcVolumeCtls, AdcMicpgaCtls: hw.AdcMicpgaCtls,
+	}
 	note := func(part, want, got string, err error) {
 		var line string
 		switch {
@@ -155,6 +267,9 @@ func Resolve(root string, b *Board) *Layout {
 	}
 	l.DotKeys = input("dot keys", hw.DotKeys)
 	l.VolumeKeys = input("volume keys", hw.VolumeKeys)
+	if hw.MuteKeys.Name != "" {
+		l.MuteKeys = input("mute keys", hw.MuteKeys)
+	}
 	dir, err := I2CDevice(root, hw.LEDRing.Driver)
 	if err != nil {
 		dir = hw.LEDRing.Fallback

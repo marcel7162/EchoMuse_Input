@@ -38,15 +38,10 @@ import (
 	"sync"
 
 	"github.com/wilbowes/EchoMuse/internal/bindings/mixer"
+	"github.com/wilbowes/EchoMuse/pkg/board"
 )
 
-// Write sets one mixer control, found by name.
-type Write struct {
-	Name  string
-	Value string
-}
-
-// Routes is every DAPM switch that must be closed for audio to flow.
+// routes returns the DAPM switches for this board from pkg/board.
 //
 // By NAME, never by control id (#546). These were ids until 2026-09-17, and on
 // the FireOS 6 kernel every one of them named a different control: the eight
@@ -61,19 +56,6 @@ type Write struct {
 //
 // PLAYBACK: the DAC was not connected to the output mixer, so it powered down
 // with the firmware streaming correctly into it.
-var Routes = []Write{
-	{"ADC_D Right Ip Select ADC_D DIF1_R switch", "1"},
-	{"ADC_D Left Ip Select ADC_D DIF1_L switch", "1"},
-	{"ADC_C Right Ip Select ADC_C DIF1_R switch", "1"},
-	{"ADC_C Left Ip Select ADC_C DIF1_L switch", "1"},
-	{"ADC_B Right Ip Select ADC_B DIF1_R switch", "1"},
-	{"ADC_B Left Ip Select ADC_B DIF1_L switch", "1"},
-	{"ADC_A Right Ip Select ADC_A DIF1_R switch", "1"},
-	{"ADC_A Left Ip Select ADC_A DIF1_L switch", "1"},
-
-	{"HPR Output Mixer R_DAC Switch", "1"},
-	{"HPL Output Mixer L_DAC Switch", "1"},
-}
 
 var once sync.Once
 
@@ -87,17 +69,22 @@ var once sync.Once
 // whatever happens to hold that id on this kernel.
 func EnsureRoutes() {
 	once.Do(func() {
+		routes := board.CurrentLayout().CodecRoutes
+		if len(routes) == 0 {
+			log.Printf("[codec] no DAPM routes for this board")
+			return
+		}
 		var failed int
-		for _, w := range Routes {
-			if err := mixer.Set(w.Name, w.Value); err != nil {
+		for _, r := range routes {
+			if err := mixer.Set(r.Control, r.Value); err != nil {
 				failed++
 			}
 		}
 		if failed > 0 {
 			log.Printf("[codec] %d of %d DAPM routes failed — audio may be silent",
-				failed, len(Routes))
+				failed, len(routes))
 		} else {
-			log.Printf("[codec] %d DAPM routes closed", len(Routes))
+			log.Printf("[codec] %d DAPM routes closed", len(routes))
 		}
 	})
 }

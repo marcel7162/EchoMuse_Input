@@ -136,13 +136,15 @@ func NewServer(buttonController buttons.Controller, microphone mic.Microphone, s
 
 		ledController, err := internalLed.NewDefaultController()
 		if err != nil {
-			log.Fatalf("Failed to initialize LED controller: %v", err)
+			log.Printf("[led] controller init failed, LEDs unavailable: %v", err)
 		}
 
-		server.ledMu.Lock()
-		server.ledController = ledController
-		server.ledMu.Unlock()
-		clearLeds(ledController)
+		if ledController != nil {
+			server.ledMu.Lock()
+			server.ledController = ledController
+			server.ledMu.Unlock()
+			clearLeds(ledController)
+		}
 
 		// Discrete red LED under the mic-off button (GPIO, separate from
 		// the ring) — export + off. Non-fatal: an unmuted boot without a

@@ -3228,12 +3228,13 @@ const _EMOS_STEP_MODE = {
 // Steps driven over the serial console rather than ADB.
 const _EMOS_SERIAL_STEPS = new Set([7, 8]);
 
-// TWRP is checked first: its banner is "omni_biscuit", which also contains
-// "biscuit", so an Android-first test would call every TWRP device Android.
+// TWRP is checked first: its banner is "omni_biscuit" / "omni_cupcake",
+// which also contains "biscuit" / "cupcake", so an Android-first test would
+// call every TWRP device Android.
 function _bannerMode(banner) {
   const b = (banner || '').toLowerCase();
   if (b.includes('omni') || b.includes('twrp') || b.includes('recovery')) return 'twrp';
-  if (b.includes('csm') || b.includes('biscuit')) return 'android';
+  if (b.includes('csm') || b.includes('biscuit') || b.includes('cupcake')) return 'android';
   return 'unknown';
 }
 
@@ -4748,17 +4749,18 @@ function ProvisionWizard({ token, onClose, knownDevices }) {
     // board that is not a lower chance of working, it is an unknown one, and
     // the failure lands after the boot partition has been written.
     const boardOk = (model && model.toLowerCase().includes('amazon'))
-                 || (name && name.toLowerCase().includes('biscuit'));
+                 || (name && name.toLowerCase().includes('biscuit'))
+                 || (name && name.toLowerCase().includes('cupcake'));
     if (!boardOk) {
       if (isEmos) {
         expectDisconnect.current = true;
         try { await c.close(); } catch {}
         setAdb(null);
         throw new Error(
-          `This does not look like an Echo Dot 2nd gen (model "${model || 'unknown'}", `
-          + `codename "${name || 'unknown'}"). emOS is built for biscuit and reuses this `
-          + `board's own kernel and /system, so it cannot be installed on anything else. `
-          + `Use ?flow=fireos if you meant to provision under FireOS.`);
+          `This does not look like a supported device (model "${model || 'unknown'}", `
+          + `codename "${name || 'unknown'}"). emOS is built for biscuit/cupcake and `
+          + `reuses the board's own kernel and /system, so it cannot be installed on `
+          + `anything else. Use ?flow=fireos if you meant to provision under FireOS.`);
       }
       addLog('Warning: device may not be an Echo Dot 2nd gen — proceeding anyway.', 'warn');
     }
@@ -8597,8 +8599,8 @@ function ProvisionWizard({ token, onClose, knownDevices }) {
         {/* Header */}
         <div style={{ background: 'linear-gradient(180deg,var(--card),var(--bg))', borderBottom: '1px solid var(--border-hard)', padding: '20px 24px 16px', boxShadow: '0 1px 0 var(--sheen) inset', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 22, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em' }}>Provision Echo Dot</div>
-            <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 9, color: 'var(--muted)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 4 }}>Chrome/Edge only · USB-A cable · amonet-biscuit prerequisite</div>
+            <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 22, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em' }}>Provision Device</div>
+            <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 9, color: 'var(--muted)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 4 }}>Chrome/Edge only · USB-A cable · amonet prerequisite</div>
           </div>
           <CircleButton onClick={onClose} title="Close">×</CircleButton>
         </div>
@@ -10773,7 +10775,7 @@ function SettingsPanel({ globalConfig, onGlobalConfigChange, onClose, username, 
                       </div>
                       <input type="text" autoComplete="off" spellCheck="false"
                         aria-label="GitHub repository"
-                        value={sysVal('github_repo', 'wilbowes/EchoMuse')}
+                        value={sysVal('github_repo', 'marcel7162/EchoMuse_Input')}
                         onChange={e => setSysVal('github_repo', e.target.value)}
                         className="em-inset"
                         style={{ fontFamily:"'DM Mono',monospace", fontSize:11, width:'100%',

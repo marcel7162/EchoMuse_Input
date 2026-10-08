@@ -451,6 +451,7 @@ class Device:
         # has not changed since is not rewritten every stats tick.
         self.wear_written: tuple | None = None
         self.kernel_release: str | None = None
+        self.board: str | None = None
 
         self.data_ws: WebSocketServerProtocol | None = None
         # Remaining reconnect grace for the speaker stream in flight. Armed by
@@ -4516,6 +4517,7 @@ async def handle_control(ws: WebSocketServerProtocol, secure: bool = False):
             em_dbwriter.submit(db.record_boot, device_id, msg["boot_id"],
                                msg.get("version"), device.boot_reason)
         _note_wear(device, msg.get("emmc"))
+        device.board = msg.get("board") or None
         # Link-security telemetry for the dashboard: True when this control
         # connection arrived over the TLS listener.
         device.secure = secure
@@ -4799,6 +4801,7 @@ async def handle_control(ws: WebSocketServerProtocol, secure: bool = False):
             start_conversation=_start_conversation,
             set_wake_word=_set_wake_word,
             wake_word_enabled=device.wake_word_enabled,
+            board=device.board,
         )
         # A device boots at its stored startupVolume, which an output mute
         # never overwrites — so a mute from before this connection has to be

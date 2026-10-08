@@ -39,8 +39,16 @@ var Biscuit = &Board{
 	Hardware:     biscuitHardware,
 }
 
+// Cupcake is the Echo Input (MT8167B). device_type_id confirmed across
+// alexa_media_player, openHAB, FHEM, echo-speaks and a build.prop dump.
+var Cupcake = &Board{
+	ID:           "cupcake",
+	DeviceTypeID: "A1JJ0KFC4ZPNJ3",
+	Hardware:     cupcakeHardware,
+}
+
 // Known is every board the firmware can identify.
-var Known = []*Board{Biscuit}
+var Known = []*Board{Biscuit, Cupcake}
 
 // Detect returns the board beneath root, or nil when none matches. root is ""
 // on a device and a fixture directory in tests.

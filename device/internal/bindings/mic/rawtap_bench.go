@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/wilbowes/EchoMuse/pkg/board"
 )
 
 // Bench-only raw capture, for the AEC harness: every raw 9-channel batch
@@ -84,8 +86,10 @@ func init() {
 				written += int64(n)
 			}
 			f.Close()
+			ma := board.CurrentLayout().MicArray
+			frameBytes := ma.Channels * ma.SampleBytes
 			log.Printf("[rawcap] done: %s, %d bytes (%.1fs), %d batches dropped",
-				path, written, float64(written)/(16000*27), dropped.Load())
+				path, written, float64(written)/float64(ma.SampleRate*frameBytes), dropped.Load())
 		}
 	}()
 }

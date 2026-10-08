@@ -234,6 +234,15 @@ from version import VERSION as _CONTROLLER_VERSION
 # so carry the hardware model there — not the device label.
 ESPHOME_DEVICE_MODEL = "Echo Dot Gen 2 (biscuit)"
 
+BOARD_MODELS = {
+    "biscuit": "Echo Dot Gen 2 (biscuit)",
+    "cupcake": "Echo Input (cupcake)",
+}
+
+
+def model_for_board(board: str | None) -> str:
+    return BOARD_MODELS.get(board or "", ESPHOME_DEVICE_MODEL)
+
 ESPHOME_PROJECT_VERSION = os.environ.get(
     "ESPHOME_PROJECT_VERSION", _CONTROLLER_VERSION
 )
@@ -591,12 +600,17 @@ class EchoMuseSatellite(SatelliteServerProtocol):
                 friendly_name=f"{self.label} Voice Assistant",
                 mac_address=self.mac_address,
                 manufacturer="EchoMuse",
-                model=ESPHOME_DEVICE_MODEL,
+                model=(self._owning_server.device_model
+                       if self._owning_server is not None
+                       else ESPHOME_DEVICE_MODEL),
                 # CRITICAL: dot notation required — HA's manager.py does
                 # project_name.split(".") unconditionally. No dot → IndexError
                 # → device silently never appears in Devices & Services.
                 # (session handoff finding #1)
-                project_name=f"EchoMuse.{ESPHOME_DEVICE_MODEL}",
+                project_name="EchoMuse.{}".format(
+                    self._owning_server.device_model
+                    if self._owning_server is not None
+                    else ESPHOME_DEVICE_MODEL),
                 project_version=ESPHOME_PROJECT_VERSION,
                 voice_assistant_feature_flags=self._voice_assistant_flags(),
             )
@@ -2470,6 +2484,7 @@ class DeviceESPhomeServer:
         # them up on the next HA reconnect" — which is true, and was the
         # problem: HA does not reconnect on its own, so the entity stayed
         # missing for the life of the connection.
+        self.device_model: str = ESPHOME_DEVICE_MODEL
         self.capabilities: list[str] = []
 
     def set_capabilities(self, caps: list[str]) -> None:
@@ -3217,6 +3232,7 @@ async def device_connected(
     start_conversation=None,
     set_wake_word=None,
     wake_word_enabled: bool = True,
+    board: str | None = None,
 ) -> None:
     """
     Called by em_controller.handle_control() when an Echo Dot connects.
@@ -3249,6 +3265,10 @@ async def device_connected(
 
     wake_word_enabled: HA's stored picker choice, set before the port comes
     up so HA's first read is already correct.
+
+    board: board id from the device's register message (e.g. "biscuit",
+    "cupcake"). Used to set the per-device ESPHome model string so HA
+    shows the correct hardware name.
     """
     server = _servers.get(device_id)
     if server is None:
@@ -3270,6 +3290,20 @@ async def device_connected(
     server._start_conversation = start_conversation
     server._set_wake_word = set_wake_word
     server.wake_word_enabled = bool(wake_word_enabled)
+    if board:
+        new_model = model_for_board(board)
+        if new_model != server.device_model:
+            server.device_model = new_model
+            if server._mdns_info is not None and _azc is not None:
+                server._mdns_info.properties[b"project_name"] = \
+                    f"EchoMuse.{new_model}".encode("utf-8")
+                try:
+                    await _azc.async_update_service(server._mdns_info)
+                except Exception as e:
+                    log.warning(f"[{device_id}] mDNS model update failed: {e}")
+            satellite = server.get_satellite()
+            if satellite is not None:
+                satellite.disconnect()
     if server._server is not None:
         log.debug(f"[esphome.{device_id[-8:]}] device_connected: port {server.port} already listening")
         return
