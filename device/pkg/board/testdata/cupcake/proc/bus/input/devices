@@ -1,0 +1,30 @@
+I: Bus=0019 Vendor=0000 Product=0000 Version=0000
+N: Name="mtk-pmic-keys"
+P: Phys=
+S: Sysfs=/devices/platform/mt-pmic/mt-pmic-keys/input/input0
+U: Uniq=
+H: Handlers=event0
+B: PROP=0
+B: EV=3
+B: KEY=100000 0 0 0
+
+I: Bus=0019 Vendor=0000 Product=0000 Version=0000
+N: Name="gpio-privacy"
+P: Phys=gpio-keys/input1
+S: Sysfs=/devices/gpio-privacy/input/input1
+U: Uniq=
+H: Handlers=event1
+B: PROP=0
+B: EV=3
+B: KEY=100000000 0 0
+
+I: Bus=0019 Vendor=0000 Product=0000 Version=0000
+N: Name="gpio-keys"
+P: Phys=gpio-keys/input0
+S: Sysfs=/devices/gpio-keys/input/input2
+U: Uniq=
+H: Handlers=event2
+B: PROP=0
+B: EV=3
+B: KEY=400 0 0 0
+

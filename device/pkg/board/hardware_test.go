@@ -11,6 +11,10 @@ import (
 // client's name.
 const biscuitFOS5 = "testdata/biscuit-fireos5"
 
+// testdata/cupcake is what an Echo Input (MT8167B) reported on 2026-10-08,
+// from a replacement-eMMC unit with device_type_id restored.
+const cupcakeFixture = "testdata/cupcake"
+
 // Resolved by name, biscuit's parts must be exactly where every build before
 // this one opened them by number.
 func TestBiscuitResolvesToTheNumbersItAlwaysUsed(t *testing.T) {
@@ -39,6 +43,56 @@ func TestBiscuitResolvesToTheNumbersItAlwaysUsed(t *testing.T) {
 	}
 	if len(l.Problems) != 0 {
 		t.Errorf("parts not found by name on the fixture: %v", l.Problems)
+	}
+}
+
+func TestCupcakeResolvesToExpectedLayout(t *testing.T) {
+	b := Detect(cupcakeFixture)
+	if b != Cupcake {
+		t.Fatalf("fixture detected as %v, want cupcake", IDOf(b))
+	}
+	l := Resolve(cupcakeFixture, b)
+	if l.DotKeys != "/dev/input/event2" {
+		t.Errorf("dot keys %q, want event2", l.DotKeys)
+	}
+	if l.MuteKeys != "/dev/input/event1" {
+		t.Errorf("mute keys %q, want event1", l.MuteKeys)
+	}
+	if l.VolumeKeys != "" {
+		t.Errorf("volume keys %q, want empty (no volume buttons)", l.VolumeKeys)
+	}
+	if want := filepath.Join(cupcakeFixture, "/sys/bus/i2c/devices/0-0030"); l.LEDRing != want {
+		t.Errorf("led ring %q, want %q", l.LEDRing, want)
+	}
+	if l.Capture == nil || *l.Capture != (PCMAddr{0, 1}) {
+		t.Errorf("capture %+v, want card 0 device 1", l.Capture)
+	}
+	if l.Playback == nil || *l.Playback != (PCMAddr{0, 6}) {
+		t.Errorf("playback %+v, want card 0 device 6", l.Playback)
+	}
+	if l.MuteLEDGPIO != "" {
+		t.Errorf("mute LED gpio %q, want empty", l.MuteLEDGPIO)
+	}
+	if l.LightSensor != (LightSensor{}) {
+		t.Errorf("light sensor %+v, want zero (IIO not yet supported)", l.LightSensor)
+	}
+	if l.HCI != "/dev/stpbt" {
+		t.Errorf("hci %q", l.HCI)
+	}
+	for _, p := range l.Problems {
+		if !strings.Contains(p, "volume keys") {
+			t.Errorf("unexpected problem for a named part: %s", p)
+		}
+	}
+}
+
+func TestCupcakeFixtureDetectsAsExactlyOneBoard(t *testing.T) {
+	b := Detect(cupcakeFixture)
+	if b == nil {
+		t.Fatal("cupcake fixture not detected")
+	}
+	if b != Cupcake {
+		t.Fatalf("cupcake fixture detected as %s, not cupcake", b.ID)
 	}
 }
 

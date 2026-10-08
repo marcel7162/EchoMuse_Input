@@ -16,10 +16,15 @@ import (
 // firmware always has, and tells us. A part with no fallback is not opened by
 // number at all.
 type Hardware struct {
-	// DotKeys carries the action and mute buttons; VolumeKeys the volume
-	// pair. Input device names, as /proc/bus/input/devices gives them.
+	// DotKeys carries the action button and, on biscuit, the mute button
+	// too. VolumeKeys the volume pair. Input device names, as
+	// /proc/bus/input/devices gives them.
 	DotKeys    Input
 	VolumeKeys Input
+	// MuteKeys carries the mute button when it is on a separate input
+	// device from DotKeys. Zero value means mute is on DotKeys (biscuit)
+	// or absent.
+	MuteKeys Input
 	// LEDRing is the ring driver's i2c client, by its sysfs `name`.
 	LEDRing I2C
 	// MuteLEDGPIO is the sysfs GPIO number of the LED under the mute button,
@@ -82,6 +87,20 @@ var biscuitHardware = &Hardware{
 	HCI: "/dev/stpbt",
 }
 
+// cupcakeHardware: names read by marcel7162 off a replacement-eMMC unit on
+// 2026-10-08. No fallback values — new boards do not get any.
+var cupcakeHardware = &Hardware{
+	DotKeys:  Input{Name: "gpio-keys"},
+	MuteKeys: Input{Name: "gpio-privacy"},
+	// No volume buttons on the Echo Input.
+	LEDRing: I2C{Driver: "lp5562"},
+	// No MuteLEDGPIO: mute is handled by the gpio-privacy input driver.
+	Capture:  PCM{Name: "TDM_Capture"},
+	Playback: PCM{Name: "DL1_Playback"},
+	// tsl2572 light sensor uses IIO; not readable by the current als binding.
+	HCI: "/dev/stpbt",
+}
+
 // Layout is a board's Hardware resolved on the running device: what the
 // bindings open.
 type Layout struct {
@@ -92,6 +111,7 @@ type Layout struct {
 
 	DotKeys    string // /dev/input/eventN, "" when not found
 	VolumeKeys string
+	MuteKeys   string // separate mute device, "" when mute is on DotKeys
 	LEDRing    string // sysfs directory, "" when not found
 	// MuteLEDGPIO is "" when the board has no mute LED GPIO to drive.
 	MuteLEDGPIO string
@@ -155,6 +175,9 @@ func Resolve(root string, b *Board) *Layout {
 	}
 	l.DotKeys = input("dot keys", hw.DotKeys)
 	l.VolumeKeys = input("volume keys", hw.VolumeKeys)
+	if hw.MuteKeys.Name != "" {
+		l.MuteKeys = input("mute keys", hw.MuteKeys)
+	}
 	dir, err := I2CDevice(root, hw.LEDRing.Driver)
 	if err != nil {
 		dir = hw.LEDRing.Fallback

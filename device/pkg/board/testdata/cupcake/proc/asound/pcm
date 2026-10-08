@@ -1,0 +1,10 @@
+00-00: DL1 (*) :  : playback 1
+00-01: TDM_Capture (*) :  : capture 1
+00-02: VUL (*) :  : capture 1
+00-03: HDMI (*) :  : playback 1
+00-04: ULDL_Loopback (*) :  : playback 1 : capture 1
+00-05: I2S0 (*) :  : playback 1 : capture 1
+00-06: DL1_Playback (*) :  : playback 1
+00-07: Mrgrx (*) :  : playback 1
+00-08: AWB (*) :  : capture 1
+00-09: DL2 (*) :  : playback 1
