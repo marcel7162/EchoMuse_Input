@@ -24,6 +24,24 @@ def test_dockerfile_copies_every_controller_module():
     )
 
 
+def test_ci_runs_every_dashboard_test():
+    """
+    The dashboard job lists its tests by hand, so a new one that nobody adds to
+    the list passes locally and never runs in CI — green forever, testing
+    nothing. `device_tools.test.mjs` sat that way: written, passing, and run by
+    no job but a developer's own shell.
+
+    Same shape as the Dockerfile guard above, for the same reason: an
+    enumerated list is only honest while something checks it.
+    """
+    ci = (CONTROLLER.parent / ".github" / "workflows" / "ci.yml").read_text()
+    listed = set(re.findall(r"node\s+controller/tests/(\S+\.test\.mjs)", ci))
+    on_disk = {p.name for p in (CONTROLLER / "tests").glob("*.test.mjs")}
+    assert on_disk <= listed, (
+        f"dashboard tests on disk but never run by CI: {sorted(on_disk - listed)}"
+    )
+
+
 def test_dashboard_bundle_is_cache_busted():
     """
     /dashboard must not hand the browser a bare /static/dashboard.js URL.
