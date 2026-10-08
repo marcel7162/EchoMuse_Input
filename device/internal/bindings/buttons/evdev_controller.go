@@ -49,18 +49,31 @@ func (e *EvDevController) SubscribeToButton(callback buttons.ButtonClickCallback
 	// The input devices are found by name (pkg/board): eventN is enumeration
 	// order, and the wrong device opens without error and reads nothing.
 	layout := board.CurrentLayout()
-	if layout.DotKeys == "" || layout.VolumeKeys == "" {
-		return nil, errors.New("buttons: input devices not found on this board")
+	if layout.DotKeys == "" {
+		return nil, errors.New("buttons: dot input device not found on this board")
 	}
 	dotBtn := e.GetDotButton()
-	volBtn := e.GetVolumeButton()
 	dotDevice, err := evdev.Open(layout.DotKeys)
 	if err != nil {
 		return nil, err
 	}
-	volDevice, err := evdev.Open(layout.VolumeKeys)
-	if err != nil {
-		return nil, err
+
+	hasSeparateMute := layout.MuteKeys != ""
+
+	var volDevice *evdev.InputDevice
+	if layout.VolumeKeys != "" {
+		volDevice, err = evdev.Open(layout.VolumeKeys)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var muteDevice *evdev.InputDevice
+	if hasSeparateMute {
+		muteDevice, err = evdev.Open(layout.MuteKeys)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -130,8 +143,10 @@ func (e *EvDevController) SubscribeToButton(callback buttons.ButtonClickCallback
 				continue
 			}
 
-			// Intercept mute on dot device
-			if btn.Type == buttons.DotButton && !down && clickType == buttons.MuteClick {
+			// Intercept mute on dot device when mute is not on a
+			// separate input device (biscuit: mtk-kpd carries both).
+			if btn.Type == buttons.DotButton && !hasSeparateMute &&
+				!down && clickType == buttons.MuteClick {
 				if e.muteCallback != nil {
 					e.muteCallback()
 				}
@@ -155,8 +170,42 @@ func (e *EvDevController) SubscribeToButton(callback buttons.ButtonClickCallback
 		}
 	}
 
+	// readMuteDevice handles a dedicated mute input device (cupcake:
+	// gpio-privacy is a separate evdev node from the action button).
+	// Any key release on this device is a mute toggle — the device has
+	// exactly one button, so the key code does not matter.
+	readMuteDevice := func(dev *evdev.InputDevice) {
+		defer dev.Release()
+		var wasDown bool
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			ev, err := dev.ReadOne()
+			if err != nil {
+				return
+			}
+			if ev.Type != evdev.EV_KEY {
+				continue
+			}
+			down := ev.Value == 1
+			if wasDown == down {
+				continue
+			}
+			wasDown = down
+			if !down && e.muteCallback != nil {
+				e.muteCallback()
+			}
+		}
+	}
+
 	go readBtn(dotBtn, dotDevice)
-	go readBtn(volBtn, volDevice)
+	if volDevice != nil {
+		go readBtn(e.GetVolumeButton(), volDevice)
+	}
+	if muteDevice != nil {
+		go readMuteDevice(muteDevice)
+	}
 
 	return eventSub, nil
 }
