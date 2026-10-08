@@ -19,10 +19,11 @@ version: "2.25.0"
 # add-on changes before they reach main (Supervisor clones the default
 # branch), and "it compiles onnxruntime" made that loop look far more
 # expensive than it is. tools/make_dev_addon.sh packages one.
-image: "ghcr.io/wilbowes/echomuse-controller"
+# image removed — Supervisor builds from this directory's Dockerfile
+# since this fork has no published GHCR image.
 slug: "controller"
 description: "Local, open-source voice assistant controller for rooted Echo Dot 2nd Gen devices — wake word, fleet dashboard, and Home Assistant integration via ESPHome."
-url: "https://github.com/wilbowes/EchoMuse"
+url: "https://github.com/marcel7162/EchoMuse_Input"
 init: false
 arch:
   - aarch64

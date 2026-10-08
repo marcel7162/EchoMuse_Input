@@ -10773,7 +10773,7 @@ function SettingsPanel({ globalConfig, onGlobalConfigChange, onClose, username, 
                       </div>
                       <input type="text" autoComplete="off" spellCheck="false"
                         aria-label="GitHub repository"
-                        value={sysVal('github_repo', 'wilbowes/EchoMuse')}
+                        value={sysVal('github_repo', 'marcel7162/EchoMuse_Input')}
                         onChange={e => setSysVal('github_repo', e.target.value)}
                         className="em-inset"
                         style={{ fontFamily:"'DM Mono',monospace", fontSize:11, width:'100%',

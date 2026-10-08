@@ -457,7 +457,7 @@ MIGRATIONS: list[str] = [
     INSERT OR IGNORE INTO system_config VALUES ('device_approval',       'strict');
     INSERT OR IGNORE INTO system_config VALUES ('session_expiry_days',   '30');
     INSERT OR IGNORE INTO system_config VALUES ('update_check_interval', '3600');
-    INSERT OR IGNORE INTO system_config VALUES ('github_repo',           'wilbowes/EchoMuse');
+    INSERT OR IGNORE INTO system_config VALUES ('github_repo',           'marcel7162/EchoMuse_Input');
     INSERT OR IGNORE INTO system_config VALUES ('latest_version',        NULL);
     INSERT OR IGNORE INTO system_config VALUES ('latest_binary_url',     NULL);
     INSERT OR IGNORE INTO system_config VALUES ('last_update_check',     NULL);

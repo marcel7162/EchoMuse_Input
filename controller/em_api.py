@@ -4497,7 +4497,7 @@ async def _fetch_latest_release(force: bool = False) -> Optional[dict]:
     """
     global _release_cache, _release_cache_ts
 
-    repo = db.get_config("github_repo", "wilbowes/EchoMuse")
+    repo = db.get_config("github_repo", "marcel7162/EchoMuse_Input")
     url  = GITHUB_API_URL.format(repo=repo)
 
     log.info(f"[api] Polling GitHub releases: {url}")
@@ -4592,7 +4592,7 @@ async def _fetch_controller_release(force: bool = False) -> Optional[dict]:
             and (time.monotonic() - _controller_cache_ts) < RELEASE_CACHE_TTL):
         return _controller_cache
 
-    repo = db.get_config("github_repo", "wilbowes/EchoMuse")
+    repo = db.get_config("github_repo", "marcel7162/EchoMuse_Input")
     headers = {"Accept": "application/vnd.github+json"}
     timeout = aiohttp.ClientTimeout(total=10)
 
@@ -5539,7 +5539,7 @@ async def _fetch_latest_emos_release() -> Optional[dict]:
     does not `startswith("v")`, so the firmware poll can never select an emOS
     release, and this one cannot select a firmware release.
     """
-    repo = db.get_config("github_repo", "wilbowes/EchoMuse")
+    repo = db.get_config("github_repo", "marcel7162/EchoMuse_Input")
     url = GITHUB_API_URL.format(repo=repo)
     try:
         async with aiohttp.ClientSession() as session:
