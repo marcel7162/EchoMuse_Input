@@ -2,12 +2,25 @@ package beamformer
 
 import "testing"
 
+// biscuitConfig returns the biscuit board's mic array as a beamformer Config.
+func biscuitConfig() Config {
+	return Config{
+		Channels:     9,
+		SampleBytes:  3, // S24_3LE
+		PeriodFrames: 512,
+		DirectionChs: []int{0, 1, 2, 3, 4, 5},
+		DirectionAngles: []float64{330, 30, 90, 150, 210, 270},
+		CentreCh:     6,
+		EchoRefCh:    8,
+	}
+}
+
 // warmBeamformer returns a Beamformer with baseline warmed up and a uniform
 // noise floor, as if it had been running in a quiet room.
 func warmBeamformer(baseline float64) *Beamformer {
-	b := New()
+	b := New(biscuitConfig())
 	b.baselineReady = 100
-	for di := 0; di < nDirections; di++ {
+	for di := 0; di < b.nDirections; di++ {
 		b.energyBaseline[di] = baseline
 	}
 	return b
@@ -22,7 +35,7 @@ func TestLockBackPicksPastBurst(t *testing.T) {
 
 	// Fill the ring with baseline-level noise…
 	for i := 0; i < historyPeriods; i++ {
-		for di := 0; di < nDirections; di++ {
+		for di := 0; di < b.nDirections; di++ {
 			b.energyHistory[i][di] = 1e-6
 		}
 	}
@@ -46,9 +59,9 @@ func TestLockBackPicksPastBurst(t *testing.T) {
 
 	b.Lock(true)
 
-	if b.lockedChannel != directionToChannel[2] {
+	if b.lockedChannel != b.dirChs[2] {
 		t.Fatalf("lock-back picked ch%d, want ch%d (direction 2 burst)",
-			b.lockedChannel, directionToChannel[2])
+			b.lockedChannel, b.dirChs[2])
 	}
 }
 
@@ -62,9 +75,9 @@ func TestLockFallsBackToOnsetRatioWithoutHistory(t *testing.T) {
 
 	b.Lock(true)
 
-	if b.lockedChannel != directionToChannel[4] {
+	if b.lockedChannel != b.dirChs[4] {
 		t.Fatalf("fallback picked ch%d, want ch%d (live onset direction 4)",
-			b.lockedChannel, directionToChannel[4])
+			b.lockedChannel, b.dirChs[4])
 	}
 }
 
@@ -118,11 +131,13 @@ func TestBurstRatioPartialHistory(t *testing.T) {
 // raw9 builds one period of 9-channel S24_3LE with a per-channel constant, so
 // each channel is identifiable by value alone.
 func raw9(frames int, valueFor func(ch int) int32) []byte {
+	cfg := biscuitConfig()
+	frameSize := cfg.Channels * cfg.SampleBytes
 	buf := make([]byte, frames*frameSize)
 	for f := 0; f < frames; f++ {
-		for ch := 0; ch < nChannels; ch++ {
+		for ch := 0; ch < cfg.Channels; ch++ {
 			v := valueFor(ch)
-			b := f*frameSize + ch*byteSample
+			b := f*frameSize + ch*cfg.SampleBytes
 			buf[b] = byte(v)
 			buf[b+1] = byte(v >> 8)
 			buf[b+2] = byte(v >> 16)
@@ -132,17 +147,18 @@ func raw9(frames int, valueFor func(ch int) int32) []byte {
 }
 
 func TestEchoRefReadsChannel8(t *testing.T) {
-	b := New()
+	cfg := biscuitConfig()
+	b := New(cfg)
 	// Every channel gets a distinct value; ch8 gets one we can recognise.
-	raw := raw9(periodFrames, func(ch int) int32 {
-		if ch == echoRefCh {
+	raw := raw9(cfg.PeriodFrames, func(ch int) int32 {
+		if ch == cfg.EchoRefCh {
 			return 0x200000 // +2097152 of 2^23 → 8192 after the 24→16 shift
 		}
 		return int32(ch) << 12
 	})
 	out := b.EchoRef(raw)
-	if len(out) != periodFrames*2 {
-		t.Fatalf("expected %d bytes, got %d", periodFrames*2, len(out))
+	if len(out) != cfg.PeriodFrames*2 {
+		t.Fatalf("expected %d bytes, got %d", cfg.PeriodFrames*2, len(out))
 	}
 	got := int16(uint16(out[0]) | uint16(out[1])<<8)
 	if got != 8192 {
@@ -157,10 +173,11 @@ func TestEchoRefReadsChannel8(t *testing.T) {
 // clipping, which does not merely cancel badly: it teaches the adaptive
 // filter a distorted echo path.
 func TestEchoRefIsUnityGain(t *testing.T) {
-	b := New()
+	cfg := biscuitConfig()
+	b := New(cfg)
 	// Near full scale on ch8. Any gain above unity clamps this.
-	raw := raw9(periodFrames, func(ch int) int32 {
-		if ch == echoRefCh {
+	raw := raw9(cfg.PeriodFrames, func(ch int) int32 {
+		if ch == cfg.EchoRefCh {
 			return 0x7F0000 >> 0 // 8323072 — close to the 2^23 ceiling
 		}
 		return 0
@@ -176,15 +193,18 @@ func TestEchoRefIsUnityGain(t *testing.T) {
 }
 
 func TestEchoRefRejectsShortBuffer(t *testing.T) {
-	b := New()
+	cfg := biscuitConfig()
+	b := New(cfg)
+	frameSize := cfg.Channels * cfg.SampleBytes
 	if out := b.EchoRef(make([]byte, frameSize-1)); out != nil {
 		t.Fatal("a short period must report no reference, not a partial one")
 	}
 }
 
 func TestWakeMicSelectsUnlockedChannel(t *testing.T) {
-	b := New()
-	for _, c := range []struct{ mic, want int }{{0, centreCh}, {1, 0}, {3, 2}, {6, 5}, {7, centreCh}, {-1, centreCh}} {
+	cfg := biscuitConfig()
+	b := New(cfg)
+	for _, c := range []struct{ mic, want int }{{0, cfg.CentreCh}, {1, 0}, {3, 2}, {6, 5}, {7, cfg.CentreCh}, {-1, cfg.CentreCh}} {
 		b.SetWakeMic(c.mic)
 		if got := b.omniChannel(); got != c.want {
 			t.Errorf("wakeMic %d: channel %d, want %d", c.mic, got, c.want)

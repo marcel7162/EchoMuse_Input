@@ -18,6 +18,7 @@ import (
 	"github.com/wilbowes/EchoMuse/internal/processor"
 	"github.com/wilbowes/EchoMuse/internal/wakeword/ort"
 	"github.com/wilbowes/EchoMuse/internal/wakeword/shadow"
+	"github.com/wilbowes/EchoMuse/pkg/board"
 	"github.com/wilbowes/EchoMuse/pkg/mic"
 	"github.com/wilbowes/EchoMuse/pkg/speaker"
 )
@@ -313,7 +314,7 @@ func NewDataClient(deviceID string, microphone mic.Subscribable, spk speaker.Spe
 		mic:        microphone,
 		spk:        spk,
 		readyCh:    make(chan string, 1),
-		beam:       beamformer.New(),
+		beam:       newBeamformerFromBoard(),
 		proc:       processor.New(),
 		aec:        canceller,
 		listenGate: listen.New(0, 0, 0),
@@ -325,6 +326,22 @@ func NewDataClient(deviceID string, microphone mic.Subscribable, spk speaker.Spe
 	// supersedes it (SetAecRefSource).
 	d.hwRefMode.Store(aecRefModeOf(config.Get().Snapshot().AecRefSource))
 	return d
+}
+
+func newBeamformerFromBoard() *beamformer.Beamformer {
+	ma := board.CurrentLayout().MicArray
+	cfg := beamformer.Config{
+		Channels:     ma.Channels,
+		SampleBytes:  ma.SampleBytes,
+		PeriodFrames: ma.PeriodSize,
+		CentreCh:     ma.CentreCh,
+		EchoRefCh:    ma.EchoRefCh,
+	}
+	for _, p := range ma.Perimeter {
+		cfg.DirectionChs = append(cfg.DirectionChs, p.Ch)
+		cfg.DirectionAngles = append(cfg.DirectionAngles, p.Angle)
+	}
+	return beamformer.New(cfg)
 }
 
 // Far-end reference override, as an int so it can be atomic. Mirrors

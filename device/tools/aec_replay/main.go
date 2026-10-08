@@ -32,10 +32,20 @@ import (
 	"github.com/wilbowes/EchoMuse/internal/beamformer"
 )
 
+func biscuitBeamConfig() beamformer.Config {
+	return beamformer.Config{
+		Channels:        9,
+		SampleBytes:     3, // S24_3LE
+		PeriodFrames:    512,
+		DirectionChs:    []int{0, 1, 2, 3, 4, 5},
+		DirectionAngles: []float64{330, 30, 90, 150, 210, 270},
+		CentreCh:        6,
+		EchoRefCh:       8,
+	}
+}
+
 const (
-	frameBytes = 27   // 9 channels × S24_3LE
-	batch      = 2560 // frames per ALSA read on the device (160ms)
-	rate       = 16000
+	rate = 16000
 )
 
 func main() {
@@ -59,7 +69,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bf := beamformer.New()
+	cfg := biscuitBeamConfig()
+	frameBytes := cfg.Channels * cfg.SampleBytes
+	batch := cfg.PeriodFrames * 5 // frames per ALSA read on the device (160ms)
+
+	bf := beamformer.New(cfg)
 	c := aec.New()
 	c.SetParams(true, 0, *tail)
 	c.SetHardwareRef(true)
@@ -77,7 +91,7 @@ func main() {
 	var mic, ref, speex []byte
 	step := batch * frameBytes
 	if *prime {
-		pb, pc := beamformer.New(), aec.New()
+		pb, pc := beamformer.New(cfg), aec.New()
 		pc.SetParams(true, 0, *tail)
 		pc.SetHardwareRef(true)
 		var primed []byte

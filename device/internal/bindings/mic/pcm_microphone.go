@@ -5,6 +5,7 @@ package mic
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os/exec"
 	"sync"
@@ -33,18 +34,32 @@ type PcmMicrophone struct {
 // NewMicrophone returns the pre-configured microphone alsa device and starts
 // the permanent ALSA read loop.
 func NewMicrophone() (*PcmMicrophone, error) {
-	// The capture PCM is found by name (pkg/board), never by device number.
-	capture := board.CurrentLayout().Capture
+	layout := board.CurrentLayout()
+	capture := layout.Capture
 	if capture == nil {
 		return nil, errors.New("mic: capture PCM not found on this board")
 	}
-	device := tinyalsa.NewDevice(capture.Card, capture.Device, pcm.Config{
-		Channels:    9,
-		SampleRate:  16000,
-		PeriodSize:  512,
-		PeriodCount: 5,
-		Format:      tinyalsa.PCM_FORMAT_S24_3LE,
-	})
+	ma := layout.MicArray
+	if ma.Channels == 0 {
+		return nil, errors.New("mic: board has no MicArray config (needs hardware probing)")
+	}
+	pcmCfg := pcm.Config{
+		Channels:    ma.Channels,
+		SampleRate:  ma.SampleRate,
+		PeriodSize:  ma.PeriodSize,
+		PeriodCount: ma.PeriodCount,
+	}
+	switch ma.SampleBytes {
+	case 2:
+		pcmCfg.Format = tinyalsa.PCM_FORMAT_S16_LE
+	case 3:
+		pcmCfg.Format = tinyalsa.PCM_FORMAT_S24_3LE
+	case 4:
+		pcmCfg.Format = tinyalsa.PCM_FORMAT_S32_LE
+	default:
+		return nil, fmt.Errorf("mic: unsupported SampleBytes %d", ma.SampleBytes)
+	}
+	device := tinyalsa.NewDevice(capture.Card, capture.Device, pcmCfg)
 	m := &PcmMicrophone{
 		device: &device,
 	}
@@ -114,7 +129,7 @@ func (p *PcmMicrophone) readLoop() {
 	}()
 
 	rate := int64(p.device.DeviceConfig.SampleRate)
-	bytesPerFrame := p.device.DeviceConfig.Channels * 3 // S24_3LE
+	bytesPerFrame := p.device.DeviceConfig.Channels * board.CurrentLayout().MicArray.SampleBytes
 	var (
 		firstArrival time.Time
 		lastArrival  time.Time

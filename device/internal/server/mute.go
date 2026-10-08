@@ -6,6 +6,7 @@ import (
 
 	internalLed "github.com/wilbowes/EchoMuse/internal/bindings/led"
 	"github.com/wilbowes/EchoMuse/internal/bindings/mixer"
+	"github.com/wilbowes/EchoMuse/pkg/board"
 	"github.com/wilbowes/EchoMuse/pkg/led"
 )
 
@@ -72,29 +73,25 @@ func (m *muteController) Toggle() {
 	m.reconcilePrivacySoon()
 }
 
-// adcMuteCtls are the per-chip ADC mute controls, all four codecs
-// (A: ch0/ch1 … D: ch6 + unused). C5 hardware fix (2026-07-07): only chip
-// A was muted before, leaving chips B–D — including ch6, the mic wake word
-// and STT actually use — physically hot; the mic stream-stop was what made
-// mute effective. By name since 2026-09-17 (#546).
-var adcMuteCtls = []string{
-	"ADC_A Left Mute", "ADC_A Right Mute",
-	"ADC_B Left Mute", "ADC_B Right Mute",
-	"ADC_C Left Mute", "ADC_C Right Mute",
-	"ADC_D Left Mute", "ADC_D Right Mute",
-}
-
 // setAdcMute reports every failure, not just the first per control: this is
 // the hardware half of the mute, and a silent miss here is a hot microphone.
+//
+// The control names come from the board's Hardware (pkg/board); on biscuit
+// that is the per-chip ADC mute controls for all four codecs (A: ch0/ch1 …
+// D: ch6 + unused). By name since 2026-09-17 (#546).
 func setAdcMute(val string) {
+	ctls := board.CurrentLayout().AdcMuteCtls
+	if len(ctls) == 0 {
+		return
+	}
 	failed := 0
-	for _, ctl := range adcMuteCtls {
+	for _, ctl := range ctls {
 		if mixer.Set(ctl, val) != nil {
 			failed++
 		}
 	}
 	if failed > 0 {
-		log.Printf("Mute: %d of %d ADC mute controls failed to set %s", failed, len(adcMuteCtls), val)
+		log.Printf("Mute: %d of %d ADC mute controls failed to set %s", failed, len(ctls), val)
 	}
 }
 
